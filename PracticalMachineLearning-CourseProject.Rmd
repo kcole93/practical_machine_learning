@@ -15,7 +15,7 @@ In this assignment I will be creating a model to predict the way in which a subj
 
 ## Loading Required Libraries and Setting the Seed
 
-```{r warning=FALSE}
+```{r warning=FALSE, message = FALSE}
 library(caret)
 library(randomForest)
 library(rpart)
@@ -51,7 +51,7 @@ testing <- read.csv(url(testDL), na.strings=c("NA","#DIV/0!",""))
 ```
 
 ## Splitting Data
-Because we are dealing with a medium-size data set, we will partition the dataset randomly into a training set (60%) and a test set(40%).
+Because we are dealing with a medium-size data set, we will partition the dataset randomly into a training set (60%) and a test set (40%).
 
 ```{r}
 inTrain <- createDataPartition(y = training$classe, p = 0.6, list = F)
