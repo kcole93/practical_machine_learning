@@ -1,0 +1,163 @@
+---
+title: "Course Project - Practical Machine Learning"
+author: "Kevin Cole"
+date: "February 2, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Course Project - Practical Machine Learning
+
+In this assignment I will be creating a model to predict the way in which a subject is performing a bicep curl based on sensor readings. The data set comes from the *H*uman *A*ctivity *R*esearch (HAR) experiment, which can be found at: http://groupware.les.inf.puc-rio.br/har
+
+## Loading Required Libraries and Setting the Seed
+
+```{r warning=FALSE}
+library(caret)
+library(randomForest)
+library(rpart)
+library(rpart.plot)
+library(rattle)
+set.seed("666")
+
+```
+
+## Gathering Data
+```{r}
+## Set URLs for data downloads
+trainDL <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testDL <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+trainFile <- file.path(getwd(), "pml-training.csv")
+
+## Only download again if not in working directory
+if (!file.exists(trainFile)){
+    download.file(trainDL, trainFile, method = "curl")
+}  
+
+testFile <- file.path(getwd(), "pml-testing.csv")
+
+if (!file.exists(testFile)){
+    download.file(testDL, testFile, method = "curl")
+}  
+
+## Read in CSV files, convert NA strings to NAs
+training <- read.csv(url(trainDL), na.strings=c("NA","#DIV/0!",""))
+testing <- read.csv(url(testDL), na.strings=c("NA","#DIV/0!",""))
+
+```
+
+## Splitting Data
+Because we are dealing with a medium-size data set, we will partition the dataset randomly into a training set (60%) and a test set(40%).
+
+```{r}
+inTrain <- createDataPartition(y = training$classe, p = 0.6, list = F)
+myTraining <- training[inTrain, ]
+myTesting <- training[-inTrain, ]
+## Show training and test set dimensions
+dim(myTraining)
+dim(myTesting)
+```
+
+## Cleaning Data
+There are a number of variables (columns) with a large percent of NAs, we will remove those columns with more than 60% NAs as they will not serve as helpful predictors.
+
+```{r}
+##Determine number of NAs in Training and Test sets
+sumNA_myTraining <- sapply(myTraining, function(df) {sum(is.na(df) == TRUE)/length(df)})
+sumNA_myTesting <- sapply(myTesting, function(df) {sum(is.na(df) == TRUE)/length(df)})
+## Find those column names where there are more than 60% NAs
+trainingColNames <- names(which(sumNA_myTraining < 0.6))
+testingColNames <- names(which(sumNA_myTesting < 0.6))
+## Remove those columns where there are more than 60% NAs
+myTraining <- myTraining[, trainingColNames]
+myTesting <- myTesting[, testingColNames]
+
+```
+
+We will also run the function `nearZeroVar()` to determine further variables with little variation, as these will serve as poor predictors.
+
+```{r}
+## Run nearZeroVar on both Training and Test sets
+myNZV_Training <- nearZeroVar(myTraining, saveMetrics = T)
+myNZV_Testing <- nearZeroVar(myTesting, saveMetrics = T)
+
+## Remove columns with NZV == TRUE
+noNZV_Training <- myTraining[, which(myNZV_Training$nzv == F)]
+noNZV_Testing <- myTesting[, which(myNZV_Testing$nzv == F)]
+
+## Finally remove columns which are obviously unhelpful (e.g., "x")
+myCleanTraining <- noNZV_Training[, c(2:4, 6:59)]
+myCleanTesting <- noNZV_Testing[, c(2:4, 6:59)]
+
+```
+
+## Predicting with Random Forests
+
+We'll try predicting with random forests, as this method requires little tweaking to produce high accuracy.
+
+```{r}
+set.seed(666)
+## Build the randomForest model to predict classe with all other variables
+rfMod <- randomForest(classe ~ ., data = myCleanTraining)
+## Predict on the training data
+rfTrain <- predict(rfMod, myCleanTraining)
+## Save the accuracy of in-sample prediction
+rfTrainAcc <- confusionMatrix(myCleanTraining$classe, rfTrain)$overall
+plot(rfMod, main = "Error Rate / Number of Trees (rfMod)")
+
+## Now predict using our trained model on the testing data
+rfTest <- predict(rfMod, myCleanTesting)
+## Save and print out-of-sample accuracy
+rfTestAcc <- confusionMatrix(myCleanTesting$classe, rfTest)
+rfTestAcc
+
+```
+
+**In-Sample Error**
+
+On the training set, the in-sample accuracy was 1, meaning the prediction model was 100% accurate and there is no resubstitution error.
+```{r} 
+rfTrainAcc[1]
+```
+
+**Out-of-Sample Error**
+
+The out-of-sample error rate when applying the prediction model to the test data set was 0.19%, so this is also the predicted out-of-sample error rate.
+
+```{r}
+outOfSampleError.accuracy <- sum(rfTest == myCleanTesting$classe)/length(rfTest)
+
+outOfSampleError.accuracy
+
+outOfSampleError <- 1 - outOfSampleError.accuracy
+paste0("Out of Sample Error: ", round((outOfSampleError * 100), 2),  "%")
+```
+
+## Quiz: Predicting Cases
+
+Now we'll see how the prediction model fares on the quiz samples.
+
+```{r}
+## Read in test cases for quiz
+quiz <-read.csv(testFile, header=T, sep=",", na.strings=c("NA","#DIV/0!"))
+## Predict using our randomForests model
+predquiz <- predict(rfMod, quiz)
+names(predquiz) <- c(1:20)
+## Print predictions
+predquiz
+
+## Write answers to text files for upload
+path <- file.path(getwd(), "Practical_Machine_Learning/Quiz")
+pml_write_files = function (x){
+        n = length(x)
+        for(i in 1:n) {
+                filename = paste0("problem_id_",i,".txt")
+                write.table(x[i],file=file.path(path, filename),quote=FALSE,row.names=FALSE,col.names=FALSE)
+        }
+}
+pml_write_files(predquiz)
+```
